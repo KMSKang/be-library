@@ -3,12 +3,33 @@ package com.pgeasy.www;
 import lombok.extern.slf4j.Slf4j;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.function.Consumer;
+
+sealed interface ApprovePaymentResult {
+    default void handle(
+            Consumer<SuccessResponse> successHandler,
+            Consumer<FailureResponse> failureHandler
+    ) {
+        if (this instanceof SuccessResponse successResponse) {
+            successHandler.accept(successResponse);
+        } else if (this instanceof FailureResponse failureResponse) {
+            failureHandler.accept(failureResponse);
+        }
+    }
+
+    record SuccessResponse(String paymentId) implements ApprovePaymentResult {
+    }
+
+    record FailureResponse(int errorCode, String errorMessage) implements ApprovePaymentResult {
+    }
+}
 
 @Slf4j
 public class PgPaymentServiceImpl implements PgPaymentService {
@@ -21,39 +42,68 @@ public class PgPaymentServiceImpl implements PgPaymentService {
     private String getCreateModule(PaymentCompany paymentCompany) {
         if (PaymentCompany.KAKAO == paymentCompany) {
             return "https://open-api.kakaopay.com/online/v1/payment/ready";
-        }
-        else {
+        } else {
             return "";
         }
     }
 
+    public static void main(String[] args) {
+        PgPaymentServiceImpl pgPaymentService = new PgPaymentServiceImpl();
+        pgPaymentService.approvePayment("", "")
+                .handle(
+                        successResponse -> {
+                            System.out.println("Payment approved: " + successResponse.paymentId());
+                        },
+                        failureResponse -> {
+                            System.out.println("Payment approval failed: " + failureResponse.errorCode() + " " + failureResponse.errorMessage());
+                        }
+                );
+    }
+
     // 결제 승인
-    public JSONObject approvePayment(JSONObject jsonObject, String secretKey, PaymentCompany paymentCompany) {
+    public ApprovePaymentResult approvePayment(String secretKey, PaymentCompany paymentCompany) {
         String url = getApprovePaymentUrl(paymentCompany);
-        return sendRequest(jsonObject, secretKey, url, paymentCompany);
+        try {
+            JSONObject jsonObject = sendRequest(new JSONObject(), secretKey, url, paymentCompany);
+            jsonObject.get("status");
+            return new ApprovePaymentResult.SuccessResponse("paymentId");
+        } catch (Exception e) {
+            log.error("Error approving payment", e);
+            return new ApprovePaymentResult.FailureResponse(500, "Error approving payment");
+        }
     }
 
     private String getApprovePaymentUrl(PaymentCompany paymentCompany) {
         if (PaymentCompany.TOSS == paymentCompany) {
             return "https://api.tosspayments.com/v1/payments/confirm";
-        }
-        else if (PaymentCompany.KAKAO == paymentCompany) {
+        } else if (PaymentCompany.KAKAO == paymentCompany) {
             return "https://open-api.kakaopay.com/online/v1/payment/approve";
-        }
-        else {
+        } else {
             return "";
         }
     }
 
-    private JSONObject sendRequest(JSONObject requestData, String secretKey, String urlString, PaymentCompany paymentCompany)  {
+    // ROP: Railway Oriented Programming
+    public static void main(String[] args) {
+        SuccessResponse jsonObject = approvePayment(..){
+
+        }
+
+        jsonObject.get("status");
+        // 성공이면....
+
+        // 실패면.....
+    }
+
+
+    // 예외처리 절대 원칙: 예외는 최대한 일찍 터트리고, 가장 늦게 잡는다.
+    private JSONObject sendRequest(JSONObject requestData, String secretKey, String urlString, PaymentCompany paymentCompany) throws IOException, ParseException {
         HttpURLConnection connection = createConnection(secretKey, urlString, paymentCompany);
         try (OutputStream os = connection.getOutputStream()) {
             os.write(requestData.toString().getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             log.error("Error write response", e);
-            JSONObject errorResponse = new JSONObject();
-            errorResponse.put("error", "Error write response");
-            return errorResponse;
+            throw e;
         }
 
         try (InputStream responseStream = connection.getResponseCode() == 200 ? connection.getInputStream() : connection.getErrorStream();
@@ -61,9 +111,7 @@ public class PgPaymentServiceImpl implements PgPaymentService {
             return (JSONObject) new JSONParser().parse(reader);
         } catch (Exception e) {
             log.error("Error reading response", e);
-            JSONObject errorResponse = new JSONObject();
-            errorResponse.put("error", "Error reading response");
-            return errorResponse;
+            throw e;
         }
     }
 
@@ -84,11 +132,9 @@ public class PgPaymentServiceImpl implements PgPaymentService {
     private String getAuthorization(String secretKey, PaymentCompany paymentCompany) {
         if (PaymentCompany.TOSS == paymentCompany) {
             return "Basic " + Base64.getEncoder().encodeToString((secretKey + ":").getBytes(StandardCharsets.UTF_8));
-        }
-        else if (PaymentCompany.KAKAO == paymentCompany) {
+        } else if (PaymentCompany.KAKAO == paymentCompany) {
             return "SECRET_KEY " + secretKey;
-        }
-        else {
+        } else {
             return "";
         }
     }
