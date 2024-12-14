@@ -1,5 +1,8 @@
 package com.pgeasy.www;
 
+import com.pgeasy.www.module.BasePaymentModule;
+import com.pgeasy.www.module.KakaoPayModule;
+import com.pgeasy.www.module.TossPaymentsModule;
 import lombok.extern.slf4j.Slf4j;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -10,6 +13,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 import java.util.function.Consumer;
 
 sealed interface ApprovePaymentResult {
@@ -33,6 +37,18 @@ sealed interface ApprovePaymentResult {
 
 @Slf4j
 public class PgPaymentServiceImpl implements PgPaymentService {
+
+    Map<String, BasePaymentModule> map = Map.of(
+            PaymentCompany.TOSS.name(), new TossPaymentsModule(),
+            PaymentCompany.KAKAO.name(), new KakaoPayModule()
+    );
+
+
+    public PgPaymentService addModule(String key, BasePaymentModule module) {
+        map.put(key, module);
+        return this;
+    }
+
     // 결제 모듈창
     public JSONObject createModule(JSONObject jsonObject, String secretKey, PaymentCompany paymentCompany) {
         String url = getCreateModule(paymentCompany);
@@ -40,15 +56,27 @@ public class PgPaymentServiceImpl implements PgPaymentService {
     }
 
     private String getCreateModule(PaymentCompany paymentCompany) {
-        if (PaymentCompany.KAKAO == paymentCompany) {
-            return "https://open-api.kakaopay.com/online/v1/payment/ready";
-        } else {
-            return "";
+        switch (paymentCompany) {
+            case TOSS:
+                return "https://api.tosspayments.com/v1/payments";
+            case KAKAO:
+                return "https://open-api.kakaopay.com/v1/payment";
+            default:
+                return "";
         }
     }
 
     public static void main(String[] args) {
-        PgPaymentServiceImpl pgPaymentService = new PgPaymentServiceImpl();
+        PgPaymentServiceImpl pgPaymentService = new PgPaymentServiceImpl()
+                .addModule("FastCampus", new FastCampusPaymentModule())
+                .addModule("FastCampus", new FastCampusPaymentModule())
+                .addModule("FastCampus", new FastCampusPaymentModule())
+                .addModule("FastCampus", new FastCampusPaymentModule())
+                .addModule("FastCampus", new FastCampusPaymentModule())
+                .configure("secretKey", "AAAA")
+
+                ;
+
         pgPaymentService.approvePayment("", "")
                 .handle(
                         successResponse -> {
