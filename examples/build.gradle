@@ -32,7 +32,6 @@ dependencies {
 }
 
 bootJar {
-    // Lombok 제외 설정
     excludes = ['org/projectlombok/lombok']
 }
 
