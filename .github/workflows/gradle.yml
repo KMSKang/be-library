@@ -124,7 +124,7 @@ jobs:
         run: |
           # Fetch all tags
           git fetch --tags
-
+          
           # Get the latest tag, or default to 1.0.0
           latest_tag=$(git tag --sort=-v:refname | head -n 1)
           if [[ -z "$latest_tag" || ! "$latest_tag" =~ ^v?[0-9]+(\.[0-9]+)*$ ]]; then
@@ -137,7 +137,8 @@ jobs:
         id: generate_new_version
         run: |
           # Strip 'v' prefix if present
-          clean_tag=${{ env.latest_tag#v }}
+          clean_tag="${{ env.latest_tag }}"
+          clean_tag=${clean_tag//v/}  # Remove 'v' from the tag if it exists
 
           # Parse the tag into major, minor, patch
           IFS='.' read -r major minor patch <<< "$clean_tag"
